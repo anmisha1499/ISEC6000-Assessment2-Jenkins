@@ -4,7 +4,7 @@ services:
   # Jenkins provides the CI/CD pipeline interface and executes the pipeline.
   # Jenkins itself runs without privileged mode.
   jenkins:
-        # Build a custom Jenkins image containing the Docker CLI.
+    # Build a custom Jenkins image containing the Docker CLI.
     build:
       context: ./jenkins
       dockerfile: Dockerfile
@@ -35,17 +35,17 @@ services:
       # Persistent Jenkins data including jobs, plugins and build history.
       - jenkins_home:/var/jenkins_home
 
-      # Read-only access to Docker TLS client certificates.
+      # Shared workspace used by Jenkins and Docker-in-Docker.
+      - jenkins_workspace:/var/jenkins_home/workspace
+
+      # Jenkins receives the Docker TLS client certificates as read-only.
       - jenkins_docker_certs:/certs/client:ro
 
     depends_on:
-      # Jenkins starts after the Docker-in-Docker service.
       - docker
 
     networks:
-      # Private network used by Jenkins and Docker-in-Docker.
       - jenkins_network
-
 
   # Docker-in-Docker service.
   # Provides the Docker daemon used by Jenkins pipelines.
@@ -54,23 +54,24 @@ services:
     container_name: jenkins-docker
     restart: unless-stopped
 
-    # Required by Docker-in-Docker to run the Docker daemon.
-    # This privilege is restricted to the DinD service, not Jenkins.
+    # Required for the Docker-in-Docker daemon.
     privileged: true
 
     environment:
-      # Automatically creates TLS certificates for the Docker daemon.
+      # Automatically generates and manages Docker TLS certificates.
       DOCKER_TLS_CERTDIR: /certs
 
     volumes:
       # Shares generated TLS certificates with the Jenkins service.
       - jenkins_docker_certs:/certs/client
 
+      # Shared workspace used by Jenkins and Docker-in-Docker.
+      - jenkins_workspace:/var/jenkins_home/workspace
+
       # Persists Docker images and build data.
       - docker_data:/var/lib/docker
 
     networks:
-      # Private network used by Jenkins and Docker-in-Docker.
       - jenkins_network
 
     command:
@@ -83,6 +84,9 @@ volumes:
 
   # Stores Jenkins configuration, jobs, plugins and build history.
   jenkins_home:
+
+  # Shared persistent workspace for Jenkins and Docker-in-Docker.
+  jenkins_workspace:
 
   # Stores TLS certificates used for secure Jenkins-to-Docker communication.
   jenkins_docker_certs:
