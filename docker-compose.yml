@@ -1,44 +1,38 @@
 services:
 
   # Jenkins controller.
-  # Jenkins provides the CI/CD pipeline interface and executes the pipeline.
-  # Jenkins itself runs without privileged mode.
+  # Jenkins uses the host Docker socket to launch Docker-based agents.
   jenkins:
-    # Build a custom Jenkins image containing the Docker CLI.
     build:
       context: ./jenkins
       dockerfile: Dockerfile
 
-    # Name of the locally built Jenkins image.
     image: isec6000-jenkins:latest
     container_name: jenkins
     restart: unless-stopped
 
+    # Docker group ID on this VM.
+    group_add:
+      - "137"
+
     ports:
-      # Jenkins web interface.
       - "8080:8080"
-
-      # Jenkins inbound agent communication.
       - "50000:50000"
-
+      
     environment:
-      # Jenkins connects to the Docker-in-Docker daemon using TLS.
-      DOCKER_HOST: tcp://docker:2376
-
-      # Location of the Docker TLS client certificates.
-      DOCKER_CERT_PATH: /certs/client
-
-      # Enable TLS verification for the Docker connection.
-      DOCKER_TLS_VERIFY: "1"
+      JAVA_OPTS: "-Dorg.jenkinsci.plugins.durabletask.BourneShellScript.LAUNCH_DIAGNOSTICS=true"
 
     volumes:
-      # Persistent Jenkins data including jobs, plugins and build history.
+      # Host Docker socket for Jenkins Docker Pipeline.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Persistent Jenkins data.
       - jenkins_home:/var/jenkins_home
 
-      # Shared workspace used by Jenkins and Docker-in-Docker.
+      # Shared workspace.
       - jenkins_workspace:/var/jenkins_home/workspace
 
-      # Jenkins receives the Docker TLS client certificates as read-only.
+      # Docker TLS certificates.
       - jenkins_docker_certs:/certs/client:ro
 
     depends_on:
@@ -47,55 +41,41 @@ services:
     networks:
       - jenkins_network
 
+
   # Docker-in-Docker service.
-  # Provides the Docker daemon used by Jenkins pipelines.
   docker:
     image: docker:dind
     container_name: jenkins-docker
     restart: unless-stopped
 
-    # Required for the Docker-in-Docker daemon.
     privileged: true
 
     environment:
-      # Automatically generates and manages Docker TLS certificates.
       DOCKER_TLS_CERTDIR: /certs
 
     volumes:
-      # Shares generated TLS certificates with the Jenkins service.
       - jenkins_docker_certs:/certs/client
-
-      # Shared workspace used by Jenkins and Docker-in-Docker.
       - jenkins_workspace:/var/jenkins_home/workspace
-
-      # Persists Docker images and build data.
       - docker_data:/var/lib/docker
 
     networks:
       - jenkins_network
 
     command:
-      # Use overlay2 for Docker storage.
       - --storage-driver=overlay2
 
 
-# Persistent storage volumes.
 volumes:
 
-  # Stores Jenkins configuration, jobs, plugins and build history.
   jenkins_home:
 
-  # Shared persistent workspace for Jenkins and Docker-in-Docker.
   jenkins_workspace:
 
-  # Stores TLS certificates used for secure Jenkins-to-Docker communication.
   jenkins_docker_certs:
 
-  # Stores Docker images and build data created by the DinD service.
   docker_data:
 
 
-# Private network connecting Jenkins and Docker-in-Docker.
 networks:
   jenkins_network:
     driver: bridge
